@@ -397,6 +397,9 @@ def build_parser(interactive: bool = False) -> argparse.ArgumentParser:
     shell = sub.add_parser("shell", help="open the interactive shell")
     shell.set_defaults(func=cmd_shell)
 
+    version = sub.add_parser("version", help="print the version")
+    version.set_defaults(func=cmd_version)
+
     info = sub.add_parser("info", help="show metadata for a link")
     info.add_argument("link", help="Spotify track, album, playlist or artist link")
     info.add_argument("--json", action="store_true", help="machine readable output")
@@ -459,6 +462,14 @@ def build_parser(interactive: bool = False) -> argparse.ArgumentParser:
     config.set_defaults(func=cmd_config)
 
     return parser
+
+
+def cmd_version(args: argparse.Namespace, printer: Printer) -> int:
+    """Print the version."""
+    from . import __version__
+
+    printer.info(f"Spoti-CL {__version__}")
+    return 0
 
 
 def cmd_shell(args: argparse.Namespace, printer: Printer) -> int:

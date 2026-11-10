@@ -96,19 +96,51 @@ Nothing is scraped from a logged-in session and no cookie is required.
 
 Requires Python 3.10+, `ffmpeg` on the PATH, and network access.
 
-```bash
+### Windows - double click the installer
+
+```bat
+install.bat
+```
+
+That finds a working Python (it skips broken or half removed installs), builds
+a virtual environment under `%LOCALAPPDATA%\spoti-cl`, installs the package,
+drops the command shims into `%LOCALAPPDATA%\spoti-cl\bin`, adds that folder
+to your user PATH and verifies the result. Open a **new** terminal afterwards
+and run `spoti-cl`.
+
+`uninstall.bat` removes all of it, including the PATH entry.
+
+If you prefer to do it by hand:
+
+```bat
 git clone https://github.com/Deepma1ya/Spoti-CL.git
 cd Spoti-CL
 python -m venv .venv
-.venv/Scripts/activate        # Windows
-source .venv/bin/activate     # macOS / Linux
+.venv\Scripts\activate
 pip install -e .
-spoti-cl doctor               # checks yt-dlp, ffmpeg, mutagen and the API
+spoti-cl doctor            # checks yt-dlp, ffmpeg, mutagen and the API
 ```
 
 `pip install -e .` pulls in `yt-dlp`, `httpx` and `mutagen`. `ffmpeg` has to be
 installed separately (`winget install Gyan.FFmpeg`, `brew install ffmpeg`,
-`apt install ffmpeg`).
+`apt install ffmpeg`). The installer tells you if it is missing.
+
+### macOS and Linux
+
+```bash
+git clone https://github.com/Deepma1ya/Spoti-CL.git
+cd Spoti-CL
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+spoti-cl doctor
+```
+
+Or install it globally with [pipx](https://pipx.pypa.io):
+
+```bash
+pipx install spoti-cl
+```
 
 The command is installed as `spoti-cl`. A `spotidl` alias is installed alongside
 it, so either name works.
