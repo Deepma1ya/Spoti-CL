@@ -241,11 +241,15 @@ class Resolver:
                     track.isrc = self.client.track_isrc(ref.id)
                 return track
 
+            # The id was not a track after all - try the other kinds, but only
+            # accept a result that actually carries something.
             for resolver in (self.resolve_playlist, self.resolve_album, self.resolve_artist):
                 try:
-                    return resolver(ref.id)
+                    candidate = resolver(ref.id)
                 except Exception:
                     continue
+                if isinstance(candidate, Collection) and candidate.tracks:
+                    return candidate
             if track_error is not None:
                 raise track_error
             raise ValueError(f"{ref.id} is not a track, playlist, album or artist")

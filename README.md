@@ -14,6 +14,65 @@ spoti-cl stream "https://open.spotify.com/track/..." | ffmpeg -i pipe:0 -f s16le
 
 ---
 
+## Interactive shell
+
+Run it with no arguments and it opens a prompt that keeps one warm session
+alive - the anonymous token, the metadata cache and the match cache stay hot
+between commands, so the second command is as fast as the first.
+
+```console
+$ spoti-cl
+
+  ____          _    _  _   _      _
+/ ___|___  ___| | _(_) || |_(_)  / __|
+\___ \ _ \/ __| |/ / | ||  _| \ \/ /
+ ___) |  __/ (__|   <| || |___ \  /
+|____/ \___|\___|_|\_|_||_|_/ /_/
+
+  Spoti-CL 0.1.0
+  Spotify links to high quality audio. No client id, no account.
+
+  downloads go to E:\Projects\Spotify DRM free Commannd line
+  paste a Spotify link to download it
+  type help for commands, exit to quit
+
+spoti-cl > https://open.spotify.com/track/70LcF31zb1H0PyJoS1Sx1r
+1 track(s) queued -> E:\Projects\Spotify DRM free Commannd line\proof
+format=best quality=320
+ok E:\Projects\Spotify DRM free Commannd line\proof\Radiohead - Creep.webm
+
+spoti-cl [proof] > get https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M -f mp3 -n 5
+spoti-cl [proof] > play https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT
+spoti-cl [proof] > serve --port 8765
+spoti-cl [proof] > exit
+```
+
+**A bare Spotify link is a download.** Paste it, hit enter, done.
+
+| Command | Does |
+| --- | --- |
+| `get <link>` | download a track, album, playlist or artist |
+| `info <link>` | show metadata for a link |
+| `stream <link>` | resolve the stream and print the media URL |
+| `search <query>` | search Spotify (`-n`, `--type playlist`) |
+| `serve` | run the HTTP service for bots (`--host`, `--port`) |
+| `doctor` | check yt-dlp, ffmpeg, mutagen and the API |
+| `config` | show or change the defaults (`--set k=v`) |
+
+| Shell built-in | Does |
+| --- | --- |
+| `cd <dir>` | change where downloads land |
+| `pwd` / `ls` | where you are / what is there |
+| `play <link>` | stream the track straight through ffplay |
+| `history` | the command history |
+| `verbose [on\|off]` | toggle the chatty output |
+| `clear` / `exit` | clear the screen / leave |
+
+Tab completion covers command names, flags and paths. History is persisted
+between sessions. A typo prints an error and keeps the shell alive.
+
+---
+
 ## How it works without a Spotify client id
 
 Spotify's official Web API needs a client id and a secret that belong to a
@@ -59,6 +118,7 @@ it, so either name works.
 ## Commands
 
 ```
+spoti-cl                                     open the interactive shell
 spoti-cl info <link>              metadata for a link, --json for machine output
 spoti-cl get  <link>              download a track, album, playlist or artist
 spoti-cl stream <link>            raw audio bytes on stdout
@@ -244,6 +304,7 @@ Environment overrides: `SPOTICL_FORMAT`, `SPOTICL_QUALITY`, `SPOTICL_THREADS`,
 ```
 src/spoti_cl/
   cli.py            argparse front end
+  shell.py          the interactive shell
   api.py            the public facade (SpotiCL)
   urls.py           link and URI parsing
   models.py         Track / Collection / Match / Candidate

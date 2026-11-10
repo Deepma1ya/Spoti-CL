@@ -47,9 +47,24 @@ class Cache:
         self.root.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------ paths
+    @staticmethod
+    def _safe_name(namespace: str) -> str:
+        """Turn a namespace into a file name every platform accepts.
+
+        Windows rejects ``: < > " / \\ | ? *`` and control characters, so a
+        namespace like ``session_token:track:4cOd...`` would silently fail to
+        write and the cache would never hit.
+        """
+        cleaned = []
+        for char in namespace:
+            if char in '<>:"/\\|?*' or ord(char) < 32:
+                cleaned.append("_")
+            else:
+                cleaned.append(char)
+        return "".join(cleaned)
+
     def _path(self, namespace: str) -> Path:
-        safe = namespace.replace("/", "_").replace("\\", "_")
-        return self.root / f"{safe}.json"
+        return self.root / f"{self._safe_name(namespace)}.json"
 
     # ------------------------------------------------------------------- read
     def get(self, namespace: str, default: Any = None, ttl: float | None = None) -> Any:

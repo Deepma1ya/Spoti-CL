@@ -19,6 +19,26 @@ from .urls import SpotifyLinkError, parse_link
 BANNER = "spoti-cl"
 
 
+class ShellUsageError(Exception):
+    """Raised by the interactive parser instead of exiting the process."""
+
+
+class ShellExit(Exception):
+    """Raised when the interactive parser wants to stop the shell."""
+
+
+class _InteractiveParser(argparse.ArgumentParser):
+    """An argument parser that reports problems instead of killing the shell."""
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        raise ShellUsageError(message)
+
+    def exit(self, status: int = 0, message: str | None = None) -> None:  # type: ignore[override]
+        if message:
+            print(message, file=sys.stderr)
+        raise ShellExit(status)
+
+
 # --------------------------------------------------------------------- output
 def _supports_colour() -> bool:
     if os.environ.get("NO_COLOR"):
@@ -66,8 +86,20 @@ def _format_track_line(index: int, track: Track) -> str:
 
 
 # ------------------------------------------------------------------- commands
+def _acquire_app(args: argparse.Namespace, config: Config) -> tuple[SpotiCL, bool]:
+    """Return the app to work with and whether we have to close it.
+
+    The interactive shell injects a warm session through ``args._app`` so the
+    token and the caches stay hot between commands.
+    """
+    injected = getattr(args, "_app", None)
+    if injected is not None:
+        return injected, False
+    return SpotiCL(config=config), True
+
+
 def cmd_info(args: argparse.Namespace, printer: Printer) -> int:
-    app = SpotiCL(config=Config.load())
+    app, owned = _acquire_app(args, Config.load())
     try:
         resolved = app.resolve(args.link)
         if args.json:
@@ -79,7 +111,8 @@ def cmd_info(args: argparse.Namespace, printer: Printer) -> int:
             _print_collection(printer, resolved)
         return 0
     finally:
-        app.close()
+        if owned:
+            app.close()
 
 
 def _print_track(printer: Printer, track: Track) -> None:
@@ -103,8 +136,8 @@ def _print_collection(printer: Printer, collection: Collection) -> None:
 
 def cmd_get(args: argparse.Namespace, printer: Printer) -> int:
     config = Config.load()
-    output_dir = Path(args.output).expanduser()
-    app = SpotiCL(config=config)
+    output_dir = Path(args.output or config.output).expanduser()
+    app, owned = _acquire_app(args, config)
     failures = 0
     try:
         tracks = app.tracks(args.link)
@@ -175,11 +208,13 @@ def cmd_get(args: argparse.Namespace, printer: Printer) -> int:
         )
         return 1 if failures else 0
     finally:
-        app.close()
+        if owned:
+            app.close()
 
 
 def cmd_stream(args: argparse.Namespace, printer: Printer) -> int:
-    app = SpotiCL(config=Config.load())
+    config = Config.load()
+    app, owned = _acquire_app(args, config)
     try:
         tracks = app.tracks(args.link)
         if not tracks:
@@ -188,13 +223,29 @@ def cmd_stream(args: argparse.Namespace, printer: Printer) -> int:
         match = app.matcher.find(tracks[0])
         printer.debug(f"stream {match.video_id} score={match.score:.2f}")
 
-        from .audio.stream import stream_to_stdout
+        from .audio.stream import extract_media_url, stream_to_stdout
+
+        if sys.stdout.isatty() or getattr(args, "_interactive", False):
+            # A terminal cannot swallow raw audio - hand over the direct URL
+            # and the metadata instead.
+            info = extract_media_url(match, app.config)
+            printer.info(f"{tracks[0].artist_label} - {tracks[0].name}")
+            printer.info(f"  duration : {_duration(tracks[0].duration_seconds)}")
+            printer.info(f"  mime    : {info.mime}")
+            printer.info(f"  media   : {info.media_url[:110]}...")
+            printer.info("")
+            printer.info("pipe it with:")
+            printer.info(
+                f"  spoti-cl stream \"{args.link}\" | ffmpeg -i pipe:0 -f s16le -ar 48000 pipe:1"
+            )
+            return 0
 
         written = stream_to_stdout(match, app.config, http=app.http)
         printer.info(f"streamed {written} bytes")
         return 0
     finally:
-        app.close()
+        if owned:
+            app.close()
 
 
 def cmd_serve(args: argparse.Namespace, printer: Printer) -> int:
@@ -205,7 +256,7 @@ def cmd_serve(args: argparse.Namespace, printer: Printer) -> int:
 
 
 def cmd_search(args: argparse.Namespace, printer: Printer) -> int:
-    app = SpotiCL(config=Config.load())
+    app, owned = _acquire_app(args, Config.load())
     try:
         if args.type == "playlist":
             results = app.search_playlists(args.query, args.limit)
@@ -228,7 +279,8 @@ def cmd_search(args: argparse.Namespace, printer: Printer) -> int:
             printer.info(f"     {track.url}")
         return 0
     finally:
-        app.close()
+        if owned:
+            app.close()
 
 
 def cmd_doctor(args: argparse.Namespace, printer: Printer) -> int:
@@ -315,8 +367,14 @@ def cmd_config(args: argparse.Namespace, printer: Printer) -> int:
 
 
 # --------------------------------------------------------------------- parser
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def build_parser(interactive: bool = False) -> argparse.ArgumentParser:
+    """Build the command line parser.
+
+    In interactive mode the parser raises instead of calling ``sys.exit``, so a
+    typo inside the shell prints an error and keeps the session alive.
+    """
+    parser_class = _InteractiveParser if interactive else argparse.ArgumentParser
+    parser = parser_class(
         prog="spoti-cl",
         description=(
             "Download and stream Spotify tracks, albums and playlists as high "
@@ -325,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
+            "  spoti-cl                                    open the interactive shell\n"
             "  spoti-cl get https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT\n"
             "  spoti-cl get https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M -o music\n"
             "  spoti-cl info https://open.spotify.com/album/5Z9iiGl2FcIfa3BMiv6OIw\n"
@@ -335,6 +394,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="chatty output")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    shell = sub.add_parser("shell", help="open the interactive shell")
+    shell.set_defaults(func=cmd_shell)
+
     info = sub.add_parser("info", help="show metadata for a link")
     info.add_argument("link", help="Spotify track, album, playlist or artist link")
     info.add_argument("--json", action="store_true", help="machine readable output")
@@ -342,7 +404,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     get = sub.add_parser("get", help="download a track, album or playlist")
     get.add_argument("link", help="Spotify link")
-    get.add_argument("-o", "--output", default="downloads", help="output directory")
+    get.add_argument(
+        "-o", "--output", default=None, help="output directory (default: downloads)"
+    )
     get.add_argument(
         "-f",
         "--format",
@@ -397,9 +461,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cmd_shell(args: argparse.Namespace, printer: Printer) -> int:
+    """Open the interactive shell."""
+    from .shell import InteractiveShell
+
+    return InteractiveShell(config=Config.load()).run()
+
+
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+
+    # No arguments at all means "open the shell".
+    if not arguments:
+        from .shell import InteractiveShell
+
+        return InteractiveShell(config=Config.load()).run()
+
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     printer = Printer(verbose=args.verbose)
     try:
         return int(args.func(args, printer) or 0)

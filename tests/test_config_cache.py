@@ -55,3 +55,29 @@ def test_cache_expires(tmp_path) -> None:
 def test_cache_survives_a_new_instance(tmp_path) -> None:
     Cache(tmp_path).set("thing", [1, 2, 3])
     assert Cache(tmp_path).get("thing") == [1, 2, 3]
+
+
+def test_cache_namespaces_survive_windows_reserved_characters(tmp_path) -> None:
+    """Namespaces contain ':' which Windows rejects in file names."""
+    namespaces = [
+        "session_token:track:4cOdK2wGLETKBW3PvgPWqT",
+        "match:4cOdK2wGLETKBW3PvgPWqT",
+        "canonical:The Weeknd|Blinding Lights|200040",
+    ]
+    cache = Cache(tmp_path)
+    for namespace in namespaces:
+        cache.set(namespace, namespace)
+
+    assert list(tmp_path.glob("*.json")), "no cache files were written"
+
+    fresh = Cache(tmp_path)
+    for namespace in namespaces:
+        assert fresh.get(namespace) == namespace
+        assert fresh.get(namespace) is not None
+
+
+def test_cache_name_is_legal_on_windows(tmp_path) -> None:
+    cache = Cache(tmp_path)
+    cache.set("weird:name/with\\chars", 1)
+    for path in tmp_path.glob("*.json"):
+        assert not any(char in path.name for char in '<>:"/\\|?*')

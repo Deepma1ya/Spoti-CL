@@ -129,14 +129,19 @@ class SpotifySession:
         """Return a token minted from a specific embed page.
 
         Embed tokens are scoped to the page that issued them, so using the
-        entity's own page keeps us inside the free tier of the API.
+        entity's own page keeps us inside the free tier of the API. When the
+        page does not carry a token - Spotify throttles the embed endpoint
+        under load - the generic anonymous session is used instead.
         """
         with self._lock:
             cached = self.cache.get(f"session_token:{kind}:{entity_id}", ttl=TOKEN_TTL)
             if cached:
                 return str(cached)
-            state = self._fetch_embed_state(entity_id, kind)
-            token = self._extract_token(state)
+            try:
+                state = self._fetch_embed_state(entity_id, kind)
+                token = self._extract_token(state)
+            except SpotifyAuthError:
+                token = self.access_token()
             self.cache.set(f"session_token:{kind}:{entity_id}", token, ttl=TOKEN_TTL)
             return token
 

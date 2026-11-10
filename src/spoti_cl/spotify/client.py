@@ -151,6 +151,8 @@ class SpotifyClient:
         playlist = data.get("playlistV2") or {}
         content = playlist.get("content") or {}
         items = list(content.get("items") or [])
+        if not playlist.get("name") and not items:
+            raise SpotifyApiError(f"{playlist_id} is not a playlist")
         total = int(content.get("totalCount") or len(items))
 
         # Page through the rest when the playlist is longer than one page.
